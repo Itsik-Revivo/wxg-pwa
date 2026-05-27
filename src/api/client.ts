@@ -1,0 +1,73 @@
+import axios from 'axios';
+import { msalInstance, loginRequest } from '../auth/msalConfig';
+
+const BASE = import.meta.env.VITE_API_URL as string;
+
+export const api = axios.create({ baseURL: BASE, timeout: 15_000 });
+
+api.interceptors.request.use(async (cfg) => {
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length) {
+    const { accessToken } = await msalInstance.acquireTokenSilent({
+      ...loginRequest, account: accounts[0],
+    });
+    cfg.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  return cfg;
+});
+
+// ── Types ──────────────────────────────────────────────────────
+
+export interface Project {
+  id: string; name: string; projectCode: string | null; hasPolygon: boolean;
+}
+
+export interface TimeEntry {
+  id: string; projectId: string; date: string;
+  startTime: string; endTime: string | null;
+  totalMinutes: number | null; isRetroactive: boolean;
+  project: { id: string; name: string; projectCode: string | null };
+}
+
+export interface MonthlyReport {
+  id: string; year: number; month: number;
+  totalWorkedMinutes: number; expectedMinutes: number;
+  overtimeMinutes: number; absenceMinutes: number;
+  status: 'OPEN' | 'PENDING' | 'APPROVED' | 'LOCKED';
+}
+
+export interface Employee {
+  id: string; fullName: string; email: string | null;
+  jobTitle: string | null; company: string; isPayrollAdmin: boolean;
+}
+
+// ── API calls ──────────────────────────────────────────────────
+
+export const attendanceApi = {
+  clockIn:  (data: { projectId: string; lat?: number; lng?: number;
+                     isRetroactive?: boolean; retroactiveNote?: string; retroactiveTime?: string }) =>
+    api.post('/api/attendance/clock-in', data),
+
+  clockOut: (data: { lat?: number; lng?: number;
+                     isRetroactive?: boolean; retroactiveNote?: string; retroactiveTime?: string }) =>
+    api.post('/api/attendance/clock-out', data),
+
+  getToday: () =>
+    api.get<{ entries: TimeEntry[]; isCurrentlyClockedIn: boolean }>('/api/attendance/today'),
+
+  getMonth: (year: number, month: number) =>
+    api.get<TimeEntry[]>(`/api/attendance/month?year=${year}&month=${month}`),
+};
+
+export const projectApi = {
+  getMyProjects: () => api.get<Project[]>('/api/projects'),
+};
+
+export const employeeApi = {
+  getMe: () => api.get<Employee>('/api/employees/me'),
+};
+
+export const reportApi = {
+  getReports: (year: number, month: number) =>
+    api.get<MonthlyReport[]>(`/api/reports?year=${year}&month=${month}`),
+};
