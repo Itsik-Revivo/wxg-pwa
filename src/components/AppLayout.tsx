@@ -5,7 +5,6 @@ import BottomNav from './BottomNav';
 export function AppLayout() {
   const { employee } = useAuthStore();
   if (!employee) return <Navigate to="/login" replace />;
-
   return (
     <div className="min-h-screen">
       <Outlet />

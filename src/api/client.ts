@@ -1,19 +1,10 @@
 import axios from 'axios';
-import { msalInstance, loginRequest } from '../auth/msalConfig';
 
 const BASE = import.meta.env.VITE_API_URL as string;
 
-export const api = axios.create({ baseURL: BASE, timeout: 15_000 });
-
-api.interceptors.request.use(async (cfg) => {
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length) {
-    const { accessToken } = await msalInstance.acquireTokenSilent({
-      ...loginRequest, account: accounts[0],
-    });
-    cfg.headers.Authorization = `Bearer ${accessToken}`;
-  }
-  return cfg;
+export const api = axios.create({
+  baseURL: BASE,
+  timeout: 15_000,
 });
 
 // ── Types ──────────────────────────────────────────────────────

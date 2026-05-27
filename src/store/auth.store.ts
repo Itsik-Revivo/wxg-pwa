@@ -1,49 +1,59 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { msalInstance, loginRequest } from '../auth/msalConfig';
-import { employeeApi, Employee } from '../api/client';
+import { api } from '../api/client';
+
+export interface Employee {
+  id: string; fullName: string; email: string | null;
+  jobTitle: string | null; company: string; isPayrollAdmin: boolean;
+}
 
 interface AuthState {
   employee:   Employee | null;
+  token:      string | null;
   isLoading:  boolean;
   error:      string | null;
-  login:      () => Promise<void>;
-  logout:     () => Promise<void>;
-  loadMe:     () => Promise<void>;
+  loginWithEmail: (email: string) => Promise<void>;
+  logout:     () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       employee:  null,
+      token:     null,
       isLoading: false,
       error:     null,
 
-      login: async () => {
+      loginWithEmail: async (email: string) => {
         set({ isLoading: true, error: null });
         try {
-          await msalInstance.loginPopup(loginRequest);
-          const { data } = await employeeApi.getMe();
-          set({ employee: data, isLoading: false });
+          // Backend מחפש עובד לפי מייל ומחזיר token פשוט
+          const { data } = await api.post<{ token: string; employee: Employee }>(
+            '/api/auth/email-login', { email }
+          );
+          // שמור token לכל הבקשות הבאות
+          api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
+          set({ employee: data.employee, token: data.token, isLoading: false });
         } catch (err: any) {
-          set({ error: err.message ?? 'שגיאה בהתחברות', isLoading: false });
+          const msg = err.response?.data?.error ?? 'מייל לא נמצא במערכת';
+          set({ error: msg, isLoading: false });
         }
       },
 
-      logout: async () => {
-        await msalInstance.logoutPopup();
-        set({ employee: null });
-      },
-
-      loadMe: async () => {
-        const accounts = msalInstance.getAllAccounts();
-        if (!accounts.length) return;
-        try {
-          const { data } = await employeeApi.getMe();
-          set({ employee: data });
-        } catch { /* token expired */ }
+      logout: () => {
+        delete api.defaults.headers.common['Authorization'];
+        set({ employee: null, token: null });
       },
     }),
-    { name: 'wxg-auth', partialize: (s) => ({ employee: s.employee }) }
+    {
+      name: 'wxg-auth',
+      partialize: (s) => ({ employee: s.employee, token: s.token }),
+      onRehydrateStorage: () => (state) => {
+        // שחזר token לאחר רענון דף
+        if (state?.token) {
+          api.defaults.headers.common['Authorization'] = `Bearer ${state.token}`;
+        }
+      },
+    }
   )
 );
